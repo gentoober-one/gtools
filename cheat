@@ -1,0 +1,29 @@
+#      _                _   
+#     | |              | |  
+#  ___| |__   ___  __ _| |_ 
+# / __| '_ \ / _ \/ _` | __|
+#| (__| | | |  __/ (_| | |_ 
+# \___|_| |_|\___|\__,_|\__|
+#
+#------------------------------
+#   by gentoober (2023)
+#------------------------------
+# "cheat" provides a cheatsheet
+# for most linux commands.
+#------------------------------
+# Usage: cheat <command>
+#
+# e.g.: cheat tcpdum
+#------------------------------
+
+#!/bin/bash
+
+if [ -z "$1" ]; then
+	echo "Usage: $0 <command>"
+	exit 1
+fi
+
+curl cheat.sh/"$1"
+
+exit 0
+                           

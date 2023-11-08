@@ -1,0 +1,15 @@
+#!/bin/bash
+
+export DATE="$(date +'%d.%m.%Y')"
+
+GREEN='\033[1;32m'  
+RED='\033[1;31m'    
+NC='\033[0m'        
+
+rsync -haAXWz --progress --delete --exclude={/dev/*,/proc/*,/sys/*,/tmp/*,/run/*,/mnt/*,/media/*} / /mnt/backups/gentoo-full_backup-$DATE
+
+if [[ $? -eq 0 ]]; then
+    echo -e "${GREEN}GENTOO FULL BACKUP IS DONE!${NC}"
+else
+    echo -e "${RED}GENTOO FULL BACKUP FAILED!${NC}"
+fi

@@ -1,0 +1,16 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <file.tar.gz>"
+    exit 1
+fi
+
+tFILE="$1"
+
+if [ -f "$tFILE" ]; then
+    tar xzvf "$tFILE" && rm -f "$tFILE"
+    echo "Extraction completed, and file $tFILE removed."
+else
+    echo "File $tFILE not found or is not a regular file."
+fi
+

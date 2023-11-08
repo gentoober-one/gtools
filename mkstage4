@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Enable the globstar option to allow the use of ** for recursive file matching.
+shopt -s globstar
+
+# Set the backup_date variable to the current date (you can customize the date format as needed).
+backup_date=$(date +"%d.%m.%Y")
+backup_local="/mnt/backups/"
+# Define text colors
+GREEN=$(tput setaf 2)       # Green
+RED=$(tput setaf 1)         # Red
+CYAN=$(tput setaf 6)        # Cyan
+YELLOW=$(tput setaf 3)      # Yellow
+LIGHT_BLUE=$(tput setaf 12) # Light Blue
+NC=$(tput sgr0)             # Reset to default color
+
+echo
+read -p "${YELLOW}Do you want to create a Stage4 from your system now?${NC} ${GREEN}(yes/no)${NC}: " confirm
+echo
+
+if [[ $confirm != "yes" && $confirm != "y" ]]; then
+  echo -e "${RED}Stage4 creation aborted.${NC}"
+  exit 1
+fi
+
+echo -e "${CYAN}I will run the following command now:${NC} ${LIGHT_BLUE}'tar cvpf - --xattrs --exclude={/dev/*,/proc/*,/sys/*,/tmp/*,/run/*,/mnt/*,/media/*,/home/*} / | lz4 -vz --best - > ${backup_local}stage4-gentoober-${backup_date}.tar.lz4'${NC}"
+echo
+read -p "${YELLOW}Do you confirm?${NC} ${GREEN}(yes/no)${NC}: " confirm_command
+echo
+
+if [[ $confirm_command != "yes" && $confirm_command != "y" ]]; then
+  echo -e "${RED}Stage4 creation aborted.${NC}"
+  exit 1
+fi
+
+# Create a tar file with xattrs, excluding specific directories, and compress it with lz4.
+if tar cvpf - --xattrs --exclude={/dev/*,/proc/*,/sys/*,/tmp/*,/run/*,/mnt/*,/media/*} / | lz4 -vz --best - > "${backup_local}stage4-gentoober-${backup_date}.tar.lz4"; then
+  # Disable the globstar option.
+  shopt -u globstar
+
+  echo
+  echo -e "${CYAN}Stage4 completed and moved to ${backup_local}/${NC}"
+else
+  
+  echo
+  echo -e "${RED}Stage4 creation failed.${NC}"
+fi
