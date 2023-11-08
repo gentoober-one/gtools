@@ -10,7 +10,10 @@ backup_local="/mnt/backups/"
 GREEN=$(tput setaf 2)       # Green
 RED=$(tput setaf 1)         # Red
 CYAN=$(tput setaf 6)        # Cyan
+MAGENTA=$(tput setaf 5)     # Magenta
 YELLOW=$(tput setaf 3)      # Yellow
+PURPLE=$(tput setaf 4)      # Purple
+DARK_GRAY=$(tput setaf 0)   # Dark Gray
 LIGHT_BLUE=$(tput setaf 12) # Light Blue
 NC=$(tput sgr0)             # Reset to default color
 
@@ -34,14 +37,13 @@ if [[ $confirm_command != "yes" && $confirm_command != "y" ]]; then
 fi
 
 # Create a tar file with xattrs, excluding specific directories, and compress it with lz4.
-if tar cvpf - --xattrs --exclude={/dev/*,/proc/*,/sys/*,/tmp/*,/run/*,/mnt/*,/media/*} / | lz4 -vz --best - > "${backup_local}stage4-gentoober-${backup_date}.tar.lz4"; then
+if tar cvpf - --xattrs --exclude={/dev/*,/proc/*,/sys/*,/tmp/*,/run/*,/mnt/*,/media/*,/home/*} / | lz4 -vz --best - > "${backup_local}stage4-gentoober-${backup_date}.tar.lz4"; then
   # Disable the globstar option.
   shopt -u globstar
 
   echo
   echo -e "${CYAN}Stage4 completed and moved to ${backup_local}/${NC}"
 else
-  
   echo
   echo -e "${RED}Stage4 creation failed.${NC}"
 fi
