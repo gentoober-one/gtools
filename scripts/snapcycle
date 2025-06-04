@@ -1,0 +1,147 @@
+#!/bin/bash
+set -euo pipefail
+
+# This script manages ZFS snapshots: creates a new one and deletes old ones.
+
+usage() {
+    echo "Usage: $0 [ZFS_POOL_PATH] [KEEP_COUNT]"
+    echo "Manages ZFS snapshots for a given pool path."
+    echo
+    echo "Arguments:"
+    echo "  ZFS_POOL_PATH   Optional. The ZFS dataset path for snapshots (e.g., rpool/ROOT/gentoo)."
+    echo "                  Defaults to 'rpool/ROOT/gentoo'."
+    echo "  KEEP_COUNT      Optional. Number of recent snapshots to keep."
+    echo "                  Defaults to 5."
+    echo
+    echo "Options:"
+    echo "  -h, --help      Display this help message."
+    echo
+    echo "Example: $0 tank/mydata 7"
+}
+
+# Color definitions
+if [ -t 1 ] && command -v tput >/dev/null; then
+    YELLOW=$(tput setaf 3)
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    NC=$(tput sgr0) # No Color
+else
+    YELLOW=""
+    RED=""
+    GREEN=""
+    NC=""
+fi
+
+# --- Configuration ---
+DEFAULT_POOL="rpool/ROOT/gentoo"
+DEFAULT_KEEP_COUNT=5
+
+POOL_ARG=""
+KEEP_COUNT_ARG=""
+
+# Parse arguments
+if [[ "$#" -gt 2 ]]; then
+    usage
+    exit 1
+fi
+
+if [[ "$#" -ge 1 ]] && [[ "$1" != "-h" ]] && [[ "$1" != "--help" ]]; then
+    POOL_ARG="$1"
+fi
+
+if [[ "$#" -eq 2 ]]; then
+    KEEP_COUNT_ARG="$2"
+fi
+
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+
+POOL="${POOL_ARG:-$DEFAULT_POOL}"
+KEEP_COUNT="${KEEP_COUNT_ARG:-$DEFAULT_KEEP_COUNT}"
+
+if ! [[ "$KEEP_COUNT" =~ ^[0-9]+$ ]] || [ "$KEEP_COUNT" -lt 0 ]; then
+    echo "${RED}Error: KEEP_COUNT must be a non-negative integer.${NC}" >&2
+    usage
+    exit 1
+fi
+
+CURRENT_DATE_TAG=$(date +%Y%m%d_%H%M%S)
+NEW_SNAPSHOT_NAME="${POOL}@${CURRENT_DATE_TAG}"
+
+# --- Create a new snapshot ---
+echo "${GREEN}Attempting to create new snapshot: '${NEW_SNAPSHOT_NAME}'...${NC}"
+if zfs snapshot "${NEW_SNAPSHOT_NAME}"; then
+    echo "${GREEN}New snapshot '${NEW_SNAPSHOT_NAME}' created successfully!${NC}"
+else
+    echo "${RED}Error: Failed to create snapshot '${NEW_SNAPSHOT_NAME}'.${NC}" >&2
+    # Decide if script should exit or continue to cleanup old snapshots
+    # For now, let's exit as a primary function failed.
+    exit 1
+fi
+
+# --- Delete old snapshots ---
+echo "${YELLOW}Checking for old snapshots to delete for pool '${POOL}', keeping the ${KEEP_COUNT} most recent...${NC}"
+
+# List all snapshots for the given pool, sorted by creation time (oldest first)
+# -H for no header, -o name for just name, -t snapshot for type, -s creation for sort key
+# grep filters for the correct pool snapshots. Ensure POOL doesn't contain regex special chars or escape them.
+# Using a temporary file for the list of snapshots to avoid issues with pipes and loops
+SNAPSHOT_LIST_FILE=$(mktemp)
+if ! zfs list -H -o name -t snapshot -s creation | grep "^${POOL}@" > "$SNAPSHOT_LIST_FILE"; then
+    echo "${RED}Error: Failed to list snapshots for pool '${POOL}'.${NC}" >&2
+    rm -f "$SNAPSHOT_LIST_FILE"
+    exit 1
+fi
+
+TOTAL_SNAPSHOTS=$(wc -l < "$SNAPSHOT_LIST_FILE")
+
+if [ "$TOTAL_SNAPSHOTS" -le "$KEEP_COUNT" ]; then
+    echo "${GREEN}Number of snapshots (${TOTAL_SNAPSHOTS}) is less than or equal to KEEP_COUNT (${KEEP_COUNT}). No snapshots to delete.${NC}"
+    rm -f "$SNAPSHOT_LIST_FILE"
+    exit 0
+fi
+
+DELETE_COUNT=$((TOTAL_SNAPSHOTS - KEEP_COUNT))
+echo "${YELLOW}Found ${TOTAL_SNAPSHOTS} snapshots. Will delete ${DELETE_COUNT} oldest ones.${NC}"
+
+# Get the oldest snapshots to delete
+# head -n $DELETE_COUNT will take the first N lines from the sorted list (oldest)
+SNAPSHOTS_TO_DELETE=$(head -n "$DELETE_COUNT" "$SNAPSHOT_LIST_FILE")
+
+if [ -z "$SNAPSHOTS_TO_DELETE" ]; then
+    echo "${GREEN}No snapshots identified for deletion (this shouldn't happen if DELETE_COUNT > 0).${NC}"
+else
+    echo "${YELLOW}The following snapshots will be deleted:${NC}"
+    echo "$SNAPSHOTS_TO_DELETE"
+    # Add a confirmation step if desired, for now proceeding directly
+
+    SUCCESS_COUNT=0
+    FAILURE_COUNT=0
+    while IFS= read -r snapshot_name; do
+        if [ -n "$snapshot_name" ]; then # Ensure it's not an empty line
+            echo "Destroying snapshot: '${snapshot_name}'..."
+            if zfs destroy "$snapshot_name"; then
+                echo "${GREEN}Snapshot '${snapshot_name}' destroyed successfully.${NC}"
+                SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            else
+                echo "${RED}Error: Failed to destroy snapshot '${snapshot_name}'.${NC}" >&2
+                FAILURE_COUNT=$((FAILURE_COUNT + 1))
+            fi
+        fi
+    done <<< "$SNAPSHOTS_TO_DELETE"
+
+    echo "${YELLOW}Snapshot deletion summary:${NC}"
+    echo "${GREEN}Successfully deleted: ${SUCCESS_COUNT}${NC}"
+    if [ "$FAILURE_COUNT" -gt 0 ]; then
+        echo "${RED}Failed to delete: ${FAILURE_COUNT}${NC}"
+        rm -f "$SNAPSHOT_LIST_FILE"
+        exit 1 # Exit with error if any deletion failed
+    fi
+fi
+
+rm -f "$SNAPSHOT_LIST_FILE"
+echo "${GREEN}Snapshot management cycle completed.${NC}"
+exit 0

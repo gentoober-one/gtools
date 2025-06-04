@@ -1,0 +1,87 @@
+#!/bin/bash
+set -euo pipefail
+
+# This script extracts a .tar.gz archive and optionally removes the original file.
+
+usage() {
+    echo "Usage: $0 [options] <file.tar.gz>"
+    echo "Extracts a .tar.gz (or .tgz) archive."
+    echo
+    echo "Options:"
+    echo "  -r, --remove    Remove the original .tar.gz file after successful extraction."
+    echo "  -h, --help      Display this help message."
+    echo
+    echo "Example: $0 myarchive.tar.gz"
+    echo "         $0 -r myarchive.tgz"
+}
+
+REMOVE_ORIGINAL=0
+ARCHIVE_FILE_PATH=""
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -r|--remove)
+            REMOVE_ORIGINAL=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Error: Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+        *)
+            if [ -z "$ARCHIVE_FILE_PATH" ]; then
+                ARCHIVE_FILE_PATH="$1"
+            else
+                echo "Error: Too many arguments. Only one archive file path is allowed." >&2
+                usage
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$ARCHIVE_FILE_PATH" ]; then
+    echo "Error: Missing archive file path." >&2
+    usage
+    exit 1
+fi
+
+# Basic check for .tar.gz or .tgz extension
+if [[ ! "$ARCHIVE_FILE_PATH" == *.tar.gz ]] && [[ ! "$ARCHIVE_FILE_PATH" == *.tgz ]]; then
+    echo "Warning: File '$ARCHIVE_FILE_PATH' does not have a typical .tar.gz or .tgz extension." >&2
+    # Allow user to proceed if they are sure
+fi
+
+if [ ! -f "$ARCHIVE_FILE_PATH" ]; then
+    echo "Error: Archive file '$ARCHIVE_FILE_PATH' not found or not a regular file." >&2
+    exit 1
+fi
+
+echo "Extracting archive '$ARCHIVE_FILE_PATH'..."
+if ! tar xzvf "$ARCHIVE_FILE_PATH"; then
+    echo "Error: tar extraction failed for '$ARCHIVE_FILE_PATH'." >&2
+    exit 1
+fi
+echo "Archive extraction successful."
+
+if [ "$REMOVE_ORIGINAL" -eq 1 ]; then
+    echo "Removing original archive file '$ARCHIVE_FILE_PATH'..."
+    if ! rm -f "$ARCHIVE_FILE_PATH"; then
+        echo "Warning: Failed to remove archive file '$ARCHIVE_FILE_PATH'. Please check manually." >&2
+        # Still exit 0 because the main operation (extraction) was successful
+    else
+        echo "Archive file removed successfully."
+    fi
+else
+    echo "Original archive file '$ARCHIVE_FILE_PATH' kept."
+fi
+
+echo "Operation completed successfully."
+exit 0

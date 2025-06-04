@@ -1,0 +1,127 @@
+#!/bin/bash
+set -euo pipefail
+
+# This script creates a Stage4 backup (tar.lz4) of the current system.
+
+usage() {
+    echo "Usage: $0 [BACKUP_DIRECTORY]"
+    echo "Creates a Stage4 backup of the system."
+    echo
+    echo "Arguments:"
+    echo "  BACKUP_DIRECTORY  Optional. Directory where the backup will be stored."
+    echo "                    Defaults to /mnt/backups/ if not provided."
+    echo
+    echo "Options:"
+    echo "  -h, --help        Display this help message."
+    echo
+    echo "Example: $0 /srv/mybackups"
+}
+
+# Color definitions
+if [ -t 1 ] && command -v tput >/dev/null; then
+    GREEN=$(tput setaf 2)
+    RED=$(tput setaf 1)
+    YELLOW=$(tput setaf 3)
+    CYAN=$(tput setaf 6)
+    LIGHT_BLUE=$(tput setaf 12)
+    NC=$(tput sgr0) # No Color
+else
+    GREEN=""
+    RED=""
+    YELLOW=""
+    CYAN=""
+    LIGHT_BLUE=""
+    NC=""
+fi
+
+BACKUP_DIR_ARG=""
+
+# Parse arguments
+if [[ "$#" -gt 1 ]]; then
+    usage
+    exit 1
+fi
+
+if [[ "$#" -eq 1 ]]; then
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        usage
+        exit 0
+    else
+        BACKUP_DIR_ARG="$1"
+    fi
+fi
+
+BACKUP_DATE=$(date +"%Y%m%d_%H%M%S") # Changed date format for better sorting
+DEFAULT_BACKUP_LOCAL="/mnt/backups/"
+BACKUP_LOCAL="${BACKUP_DIR_ARG:-$DEFAULT_BACKUP_LOCAL}"
+FINAL_BACKUP_FILE_NAME="stage4-gentoober-${BACKUP_DATE}.tar.lz4" # Changed "gentoober" to a more generic name or make it configurable later
+FINAL_BACKUP_PATH="${BACKUP_LOCAL%/}/${FINAL_BACKUP_FILE_NAME}" # Ensure no double slash
+
+# Create backup directory if it doesn't exist
+if ! mkdir -p "$BACKUP_LOCAL"; then
+    echo "${RED}Error: Could not create backup directory '$BACKUP_LOCAL'.${NC}" >&2
+    exit 1
+fi
+echo "${CYAN}Backup will be stored in: ${BACKUP_LOCAL}${NC}"
+
+echo
+read -p "${YELLOW}Do you want to create a Stage4 backup of your system now?${NC} ${GREEN}(yes/no)${NC}: " confirm
+echo
+
+if [[ "${confirm,,}" != "yes" && "${confirm,,}" != "y" ]]; then
+  echo -e "${RED}Stage4 creation aborted by user.${NC}"
+  exit 1
+fi
+
+EXCLUDE_PATHS=(
+    "/dev/*"
+    "/proc/*"
+    "/sys/*"
+    "/tmp/*"
+    "/run/*"
+    "/mnt/*"
+    "/media/*"
+    # "/home/*" # User might want to include /home, or specific subdirs. For a system stage4, usually excluded.
+    # Consider adding /var/cache/*, /var/tmp/*
+    "$BACKUP_LOCAL/*" # Exclude the backup directory itself!
+)
+
+EXCLUDE_OPTS=()
+for path in "${EXCLUDE_PATHS[@]}"; do
+    EXCLUDE_OPTS+=(--exclude="$path")
+done
+
+TAR_CMD="tar cvpf - --xattrs ${EXCLUDE_OPTS[*]} /"
+LZ4_CMD="lz4 -vz --best -" # -v shows progress, which is good for a long operation
+
+FULL_COMMAND="$TAR_CMD | $LZ4_CMD > \"$FINAL_BACKUP_PATH\""
+
+echo -e "${CYAN}The following command will be run:${NC}"
+echo -e "${LIGHT_BLUE}${FULL_COMMAND}${NC}"
+echo
+read -p "${YELLOW}Do you confirm?${NC} ${GREEN}(yes/no)${NC}: " confirm_command
+echo
+
+if [[ "${confirm_command,,}" != "yes" && "${confirm_command,,}" != "y" ]]; then
+  echo -e "${RED}Stage4 creation aborted by user.${NC}"
+  exit 1
+fi
+
+echo -e "${CYAN}Starting Stage4 creation... this may take a while.${NC}"
+# The 'set -o pipefail' ensures that if tar fails, the pipeline fails.
+if eval "$FULL_COMMAND"; then
+  echo
+  echo -e "${GREEN}Stage4 backup completed successfully!${NC}"
+  echo -e "${CYAN}File: ${FINAL_BACKUP_PATH}${NC}"
+else
+  echo
+  echo -e "${RED}Stage4 backup creation failed.${NC}" >&2
+  # Attempt to remove potentially incomplete backup file
+  if [ -f "$FINAL_BACKUP_PATH" ]; then
+      rm -f "$FINAL_BACKUP_PATH"
+      echo -e "${YELLOW}Incomplete backup file '$FINAL_BACKUP_PATH' removed.${NC}"
+  fi
+  exit 1
+fi
+
+exit 0

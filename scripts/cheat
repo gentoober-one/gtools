@@ -1,0 +1,41 @@
+#!/bin/bash
+set -euo pipefail
+
+#------------------------------
+#   by gentoober (2023)
+#------------------------------
+# "cheat" provides a cheatsheet
+# for most linux commands.
+#------------------------------
+
+usage() {
+    echo "Usage: $0 <command>"
+    echo "Example: $0 tcpdump"
+    echo "Options:"
+    echo "  -h, --help    Display this help message."
+}
+
+if [[ "$#" -ne 1 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    usage
+    exit_code=0
+    if [[ "$#" -ne 1 ]]; then
+        exit_code=1
+    fi
+    exit $exit_code
+fi
+
+COMMAND_TO_CHEAT="$1"
+
+# Check if stdout is a TTY for color output (though not used in this script, good practice)
+# if [ -t 1 ] && command -v tput >/dev/null; then
+#     # Define colors if needed
+# else
+#     # Define colors as empty strings if needed
+# fi
+
+if ! curl "cheat.sh/$COMMAND_TO_CHEAT"; then
+    echo "Error: Failed to retrieve cheatsheet for '$COMMAND_TO_CHEAT'." >&2
+    exit 1
+fi
+
+exit 0

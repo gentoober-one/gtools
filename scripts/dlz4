@@ -1,0 +1,106 @@
+#!/bin/bash
+set -euo pipefail
+
+# This script performs DECOMPRESSION of ".tar.lz4" files
+# and optionally removes the original ".tar.lz4" and intermediate ".tar" files.
+
+usage() {
+    echo "Usage: $0 [options] <file.tar.lz4>"
+    echo "Decompresses a .tar.lz4 file."
+    echo
+    echo "Options:"
+    echo "  -r, --remove    Remove original .tar.lz4 and intermediate .tar file after successful decompressions."
+    echo "  -h, --help      Display this help message."
+    echo
+    echo "Example: $0 myarchive.tar.lz4"
+    echo "         $0 -r myarchive.tar.lz4"
+}
+
+REMOVE_ORIGINAL=0
+LZ4_FILE_PATH=""
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -r|--remove)
+            REMOVE_ORIGINAL=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+        *)
+            if [ -z "$LZ4_FILE_PATH" ]; then
+                LZ4_FILE_PATH="$1"
+            else
+                echo "Error: Too many arguments. Only one file path is allowed." >&2
+                usage
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$LZ4_FILE_PATH" ]; then
+    echo "Error: Missing file path." >&2
+    usage
+    exit 1
+fi
+
+if [[ ! "$LZ4_FILE_PATH" == *.tar.lz4 ]]; then
+    echo "Error: Input file must be a .tar.lz4 file." >&2
+    exit 1
+fi
+
+if [ ! -f "$LZ4_FILE_PATH" ]; then
+    echo "Error: File '$LZ4_FILE_PATH' not found or not a regular file." >&2
+    exit 1
+fi
+
+TAR_FILE_PATH="${LZ4_FILE_PATH%.lz4}" # Remove .lz4 extension to get .tar file name
+
+echo "Decompressing '$LZ4_FILE_PATH' with lz4..."
+if ! lz4 -d "$LZ4_FILE_PATH" "$TAR_FILE_PATH"; then
+    echo "Error: lz4 decompression failed for '$LZ4_FILE_PATH'." >&2
+    # Attempt to remove potentially incomplete .tar file
+    if [ -f "$TAR_FILE_PATH" ]; then
+         rm -f "$TAR_FILE_PATH"
+    fi
+    exit 1
+fi
+echo "lz4 decompression successful. Intermediate tar file: '$TAR_FILE_PATH'"
+
+if [ ! -f "$TAR_FILE_PATH" ]; then
+    echo "Error: Intermediate tar file '$TAR_FILE_PATH' was not created after lz4 decompression." >&2
+    exit 1
+fi
+
+echo "Extracting tar archive '$TAR_FILE_PATH'..."
+if ! tar xvf "$TAR_FILE_PATH"; then
+    echo "Error: tar extraction failed for '$TAR_FILE_PATH'." >&2
+    # Do not remove files if tar extraction failed, user might want to inspect the .tar file
+    exit 1
+fi
+echo "Tar extraction successful."
+
+if [ "$REMOVE_ORIGINAL" -eq 1 ]; then
+    echo "Removing original lz4 file '$LZ4_FILE_PATH' and intermediate tar file '$TAR_FILE_PATH'..."
+    if ! rm -f "$LZ4_FILE_PATH" "$TAR_FILE_PATH"; then
+        echo "Warning: Failed to remove one or both files ('$LZ4_FILE_PATH', '$TAR_FILE_PATH'). Please check manually." >&2
+        # Still exit 0 because the main operation (decompression and extraction) was successful
+    else
+        echo "Files removed successfully."
+    fi
+else
+    echo "Original lz4 file '$LZ4_FILE_PATH' and intermediate tar file '$TAR_FILE_PATH' kept."
+fi
+
+echo "Operation completed successfully."
+exit 0
